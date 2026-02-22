@@ -5,10 +5,10 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
 
-class LLMAdapter(ABC):
+class ModelAdapter(ABC):
 """
 Minimal interface all model adapters must implement.
-The rest of NORTH should only call .complete(...) on this.
+Everything else should call `complete(...)` and receive a plain string.
 """
 
 @abstractmethod
@@ -22,3 +22,7 @@ max_tokens: int = 512,
 metadata: Optional[Dict[str, Any]] = None,
 ) -> str:
 raise NotImplementedError
+
+
+# Backwards/alternate name support (so other files can import either)
+LLMAdapter = ModelAdapter
