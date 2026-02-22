@@ -1,3 +1,7 @@
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
+
+
 class ModelAdapter(ABC):
 
     @abstractmethod
@@ -11,3 +15,6 @@ class ModelAdapter(ABC):
         metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
         raise NotImplementedError
+
+
+LLMAdapter = ModelAdapter
