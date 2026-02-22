@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 class ModelAdapter(ABC):
 """
 Minimal interface all model adapters must implement.
+
 Everything else should call `complete(...)` and receive a plain string.
 """
 
