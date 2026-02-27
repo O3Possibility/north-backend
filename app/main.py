@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException
+ffrom fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
@@ -9,11 +9,12 @@ from app.ratelimit import check_rate_limit
 
 app = FastAPI(title="NORTH Conscience API", version="0.5.0-pressure-web")
 
+# Hardened CORS to prevent preflight rejection
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -22,22 +23,26 @@ class EvaluateRequest(BaseModel):
     model: str = "default"
     provider: str | None = None
     model_name: str | None = None
-    api_base: str | None = None # Matched to your script.js payload
+    api_base: str | None = None
     api_key: str | None = None
     session_id: str | None = None
     parent_branch_id: str | None = None
     n_reads: int | None = 1
 
+@app.get("/health")
+def health():
+    return {"ok": True, "service": "north", "version": "0.5.0-pressure-web"}
+
 @app.post("/evaluate")
 async def eval_endpoint(req: EvaluateRequest, request: Request):
-    # IP extraction for rate limiting
+    # Extract IP for rate limiting
     xff = request.headers.get("x-forwarded-for")
     client_ip = xff.split(",")[0].strip() if xff else request.client.host
     
     check_rate_limit(client_ip, byok=bool(req.api_key))
 
     try:
-        # Re-route to your gate.py logic
+        # Re-route to your 500-framework internal gate
         return evaluate(
             prompt=req.prompt,
             model_choice=req.model,
@@ -50,4 +55,5 @@ async def eval_endpoint(req: EvaluateRequest, request: Request):
             n_reads=req.n_reads or 1,
         )
     except Exception as e:
+        # Ensure the error is stringified so JS can display it
         raise HTTPException(status_code=500, detail=str(e))
