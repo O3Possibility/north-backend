@@ -14,19 +14,21 @@ class MistralAdapter(BaseAdapter):
         self.url = kwargs.get("base_url") or kwargs.get("api_base") or "https://api.mistral.ai/v1/chat/completions"
 
     def complete(self, prompt: str, system_prompt: str = None, **kwargs) -> str:
-        """
-        Final fix for keyword arguments. 
-        Catches 'system' if passed instead of 'system_prompt'.
-        """
-        if not self.api_key:
-            return "Error: MISTRAL_API_KEY not set."
-
-        # Logic to handle both 'system' and 'system_prompt'
-        final_system = system_prompt or kwargs.get("system") or "You are NORTH."
-
+        # Final safety: strip the key and model name
+        raw_key = (self.api_key or "").strip()
+        model_to_use = (self.model_name or "open-mistral-7b").strip()
+        
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
+            "Authorization": f"Bearer {raw_key}" 
+        }
+        
+        data = {
+            "model": model_to_use, # This will now be the clean ID
+            "messages": [
+                {"role": "system", "content": system_prompt or "You are NORTH."},
+                {"role": "user", "content": prompt}
+            ]
         }
         
         data = {
