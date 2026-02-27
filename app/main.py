@@ -29,47 +29,34 @@ def health():
 
 @app.post("/evaluate")
 async def eval_endpoint(req: EvaluateRequest):
-    # 1. Meticulous Key Retrieval
     api_key = os.getenv("MISTRAL_API_KEY", "").strip()
     
-    if not api_key:
-        logger.error("MISTRAL_API_KEY is missing from Render Environment Variables.")
-        return {"raw_text": "Backend Error: API Key not configured."}
+    # SYSTEM_PROMPT defines the Framework (I/R/Sem)
+    SYSTEM_PROMPT = (
+        "You are the NORTH Admissibility Engine. Evaluate all input through a "
+        "triadic constraint lens: 1. Intent (I), 2. Reality (R), and 3. Semantics (Sem). "
+        "Perform a torsion check to identify drift. "
+        "Output your response as a Fused Meaning Object (FMO)."
+    )
 
-    # 2. Direct Call to Mistral (Bypassing internal app.gate to fix 401)
     async with httpx.AsyncClient() as client:
         try:
-            logger.info(f"Sending request to Mistral for prompt: {req.prompt[:20]}...")
-            
             response = await client.post(
                 "https://api.mistral.ai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                },
+                headers={"Authorization": f"Bearer {api_key}"},
                 json={
-                    "model": req.model,
-                    "messages": [{"role": "user", "content": req.prompt}],
-                    "temperature": 0.7
-                },
-                timeout=30.0
+                    "model": "open-mistral-7b",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT}, # The Framework
+                        {"role": "user", "content": req.prompt}
+                    ],
+                    "temperature": 0.2 # Lower temperature for analytical precision
+                }
             )
-
-            # 3. Meticulous Error Handling
-            if response.status_code == 401:
-                logger.error("Mistral 401: Key is invalid or billing hasn't synced.")
-                return {"raw_text": "Model Error: 401 Unauthorized. Verify your Mistral Key in Render."}
             
-            if response.status_code != 200:
-                logger.error(f"Mistral Error {response.status_code}: {response.text}")
-                return {"raw_text": f"Engine Error {response.status_code}: {response.text}"}
-
             data = response.json()
-            return {
-                "fused_meaning_object": data['choices'][0]['message']['content'],
-                "status": "success"
-            }
-
+            # Return the content to the 'fmo' div in your HTML
+            return {"fused_meaning_object": data['choices'][0]['message']['content']}
+            
         except Exception as e:
-            logger.error(f"System Error: {str(e)}")
-            return {"raw_text": f"Connectivity Error: {str(e)}"}
+            return {"raw_text": f"Engine Error: {str(e)}"}
