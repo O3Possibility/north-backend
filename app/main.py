@@ -1,63 +1,64 @@
-import os, re, httpx, logging
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+import os
 
-# Re-integrating the actual gate logic from your app/gate.py
+# Core Logic Imports
 from app.gate import evaluate
 from app.ratelimit import check_rate_limit
 
-app = FastAPI(title="NORTH_CORE")
+app = FastAPI(title="NORTH Conscience API", version="0.5.0-pressure-web")
 
+# Hardened CORS to prevent "Failed to fetch" due to preflight rejection
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 class EvaluateRequest(BaseModel):
     prompt: str
-    model: str = "open-mistral-7b"
-    session_id: Optional[str] = None
-    parent_branch_id: Optional[str] = None
-    n_reads: int = 1
+    model: str = "default"
+    provider: str | None = None
+    model_name: str | None = None
+    api_base: str | None = None
+    api_key: str | None = None
+    session_id: str | None = None
+    parent_branch_id: str | None = None
+    n_reads: int | None = 1
 
-def extract_hardened_scores(text: str):
-    """Targets digits explicitly to handle formatting like 0.4/1.0 or 40%."""
-    try:
-        def get_val(pattern, content):
-            match = re.search(pattern, content)
-            return match.group(1) if match else "0.00"
+@app.get("/health")
+def health():
+    return {"ok": True, "service": "north", "version": "0.5.0-pressure-web"}
 
-        return {
-            "I": get_val(r"Indicative \(I\):\s*([\d\.]+)", text),
-            "R": get_val(r"Relational \(R\):\s*([\d\.]+)", text),
-            "Sem": get_val(r"Semantic \(Sem\):\s*([\d\.]+)", text),
-            "rho": float(get_val(r"Score:\s*(\d+)", text)) / 100
-        }
-    except:
-        return {"I": "0.00", "R": "0.00", "Sem": "0.00", "rho": 0.0}
+def _get_client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for") or request.headers.get("X-Forwarded-For")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 @app.post("/evaluate")
-async def evaluate_gate(req: EvaluateRequest, request: Request):
-    client_ip = request.client.host if request.client else "unknown"
-    check_rate_limit(client_ip)
+async def eval_endpoint(req: EvaluateRequest, request: Request):
+    client_ip = _get_client_ip(request)
+    byok = bool(req.api_key and req.api_key.strip())
 
-    # Calling the app.gate.evaluate to process against the 500 frameworks
+    # Protect token costs
+    check_rate_limit(client_ip, byok=byok)
+
     try:
-        result = evaluate(
-            prompt=req.prompt,
-            model_name=req.model,
+        # Re-route to the 500-framework internal gate
+        return evaluate(
+            req.prompt,
+            req.model,
+            provider=req.provider,
+            api_key=req.api_key,
+            model_name=req.model_name,
+            api_base=req.api_base,
             session_id=req.session_id,
             parent_branch_id=req.parent_branch_id,
-            n_reads=req.n_reads
+            n_reads=req.n_reads or 1,
         )
-        
-        # Syncing scores with the hardened regex
-        result["scores"] = extract_hardened_scores(result.get("fused_meaning_object", ""))
-        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
