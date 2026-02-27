@@ -1,38 +1,37 @@
 import os, httpx, logging, re
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# ... (Logging and FastAPI setup same as yours) ...
+app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 class EvaluateRequest(BaseModel):
     prompt: str
     model: str = "open-mistral-7b"
 
-# FIXED: Corrected Nomenclature (Indicative, Relational, Semantic)
+# THE PROTOCOL: Hard-codes the nomenclature to avoid model drift
 NORTH_PROTOCOL = (
-    "You are the NORTH Admissibility Engine. You must structure your response exactly as follows:\n\n"
+    "You are the NORTH Admissibility Engine. Structure your response EXACTLY as follows:\n\n"
     "### 1. AUDITED FRAMEWORKS\n"
-    "List and brief audit for: [Governance, Science, Philosophy, Engineering, Culture]\n\n"
+    "[Audit: Governance, Science, Philosophy, Engineering, Culture]\n\n"
     "### 2. CORE TRIAD MAPPING (I/R/Sem)\n"
-    "- Indicative (I): [0.0-1.0] | [Evaluation]\n"
-    "- Relational (R): [0.0-1.0] | [Evaluation]\n"
-    "- Semantic (Sem): [0.0-1.0] | [Evaluation]\n\n"
+    "- Indicative (I): [0.0-1.0] | [Brief assessment]\n"
+    "- Relational (R): [0.0-1.0] | [Brief assessment]\n"
+    "- Semantic (Sem): [0.0-1.0] | [Brief assessment]\n\n"
     "### 3. TORSION SCORE\n"
-    "Score: [0-100]% | [Brief justification]\n\n"
+    "Score: [0-100]% | [Justification]\n\n"
     "### 4. DIAGNOSTIC SUMMARY\n"
-    "[Fused Meaning Object output]"
+    "[Fused Meaning Object Output]"
 )
 
 def extract_scores(text: str):
-    """Bridge: Rips text scores into JSON for the JS dashboard"""
+    """Bridge: Rips prose into JSON data for the JS dashboard"""
     try:
-        # Regex to find numbers like [0.85] or Score: 42%
         i = re.search(r"Indicative \(I\): ([\d\.]+)", text)
         r = re.search(r"Relational \(R\): ([\d\.]+)", text)
         sem = re.search(r"Semantic \(Sem\): ([\d\.]+)", text)
         torsion = re.search(r"Score: (\d+)%", text)
-        
         return {
             "I": i.group(1) if i else "0.00",
             "R": r.group(1) if r else "0.00",
@@ -44,18 +43,11 @@ def extract_scores(text: str):
 
 @app.post("/evaluate")
 async def evaluate(request: EvaluateRequest):
-    # ... (Your logic for selecting url/headers/actual_model stays the same) ...
+    m = request.model.lower()
+    # Logic to select Provider/URL/Key based on 'm' (Claude, GPT, Mistral)
+    # ... (Standard API Request Logic) ...
     
-    async with httpx.AsyncClient() as client:
-        # ... (Your payload construction stays the same) ...
-        response = await client.post(url, headers=headers, json=payload, timeout=60.0)
-        res_data = response.json()
-        
-        # ... (Extract content based on Claude vs OpenAI/Mistral) ...
-        content = res_data['content'][0]['text'] if "claude" in request.model else res_data['choices'][0]['message']['content']
-
-        # RETURN BOTH: The full text for the UI and the parsed scores for the headers
-        return {
-            "fused_meaning_object": content,
-            "scores": extract_scores(content) 
-        }
+    return {
+        "fused_meaning_object": content, # The full audit text
+        "scores": extract_scores(content) # The numeric math
+    }
