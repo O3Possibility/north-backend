@@ -16,10 +16,13 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "https://o3possibility.github.io",
+        "http://o3possibility.github.io"
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"], # Specific headers
 )
 
 # 2. Manual Preflight Handler - This kills the "Failed to Fetch" error
