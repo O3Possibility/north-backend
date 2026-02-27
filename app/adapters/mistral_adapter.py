@@ -8,20 +8,18 @@ class BaseAdapter(ABC):
         pass
 
 class MistralAdapter(BaseAdapter):
-    # Added **kwargs to catch 'base_url' or other unexpected arguments
     def __init__(self, model_name: str, api_key: str = None, **kwargs):
         self.model_name = model_name
         self.api_key = api_key or os.getenv("MISTRAL_API_KEY")
-        # Store base_url if provided, otherwise use default Mistral endpoint
+        # Handles the 'base_url' error by catching it in kwargs
         self.url = kwargs.get("base_url") or kwargs.get("api_base") or "https://api.mistral.ai/v1/chat/completions"
 
     def complete(self, prompt: str, system_prompt: str = None) -> str:
         if not self.api_key:
-            return "Error: MISTRAL_API_KEY is missing from server environment."
+            return "Error: MISTRAL_API_KEY not set on server."
 
         headers = {
             "Content-Type": "application/json",
-            "Accept": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
         
@@ -30,21 +28,24 @@ class MistralAdapter(BaseAdapter):
             "messages": [
                 {"role": "system", "content": system_prompt or "You are NORTH."},
                 {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.7
+            ]
         }
         
         try:
-            # If the URL provided doesn't end in completions, append it
-            request_url = self.url
-            if not request_url.endswith("/chat/completions"):
-                request_url = request_url.rstrip("/") + "/chat/completions"
+            # Ensure the URL is correctly pointed to completions
+            endpoint = self.url
+            if "/chat/completions" not in endpoint:
+                endpoint = endpoint.rstrip("/") + "/chat/completions"
 
-            response = requests.post(request_url, headers=headers, json=data, timeout=30)
+            response = requests.post(endpoint, headers=headers, json=data, timeout=45)
             response.raise_for_status()
             return response.json()["choices"][0]["message"]["content"]
         except Exception as e:
-            return f"Mistral API Error ({self.model_name}): {str(e)}"
+            return f"Mistral Error: {str(e)}"
+
+    # THIS FIXES THE NEW ERROR: Alias 'generate' to 'complete'
+    def generate(self, *args, **kwargs):
+        return self.complete(*args, **kwargs)
 
 class OpenAIAdapter(BaseAdapter):
     def __init__(self, model_name: str, api_key: str = None, **kwargs):
@@ -61,9 +62,8 @@ class OpenAIAdapter(BaseAdapter):
                 {"role": "user", "content": prompt}
             ]
         }
-        try:
-            response = requests.post(self.url, headers=headers, json=data)
-            response.raise_for_status()
-            return response.json()["choices"][0]["message"]["content"]
-        except Exception as e:
-            return f"OpenAI API Error: {str(e)}"
+        response = requests.post(self.url, headers=headers, json=data)
+        return response.json()["choices"][0]["message"]["content"]
+
+    def generate(self, *args, **kwargs):
+        return self.complete(*args, **kwargs)
