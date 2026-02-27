@@ -3,27 +3,22 @@ import requests
 from abc import ABC, abstractmethod
 
 class BaseAdapter(ABC):
-    """
-    The blueprint that mandates all adapters must have a 'complete' method.
-    """
     @abstractmethod
     def complete(self, prompt: str, system_prompt: str = None) -> str:
         pass
 
 class MistralAdapter(BaseAdapter):
-    def __init__(self, model_name: str, api_key: str = None):
+    # Added **kwargs to catch 'base_url' or other unexpected arguments
+    def __init__(self, model_name: str, api_key: str = None, **kwargs):
         self.model_name = model_name
         self.api_key = api_key or os.getenv("MISTRAL_API_KEY")
+        # Store base_url if provided, otherwise use default Mistral endpoint
+        self.url = kwargs.get("base_url") or kwargs.get("api_base") or "https://api.mistral.ai/v1/chat/completions"
 
     def complete(self, prompt: str, system_prompt: str = None) -> str:
-        """
-        Implementation of the 'complete' method for Mistral API.
-        This resolves the 'abstract class' instantiation error.
-        """
         if not self.api_key:
-            raise ValueError("Mistral API Key not found. Please set MISTRAL_API_KEY environment variable.")
+            return "Error: MISTRAL_API_KEY is missing from server environment."
 
-        url = "https://api.mistral.ai/v1/chat/completions"
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -33,33 +28,32 @@ class MistralAdapter(BaseAdapter):
         data = {
             "model": self.model_name,
             "messages": [
-                {"role": "system", "content": system_prompt or "You are NORTH, a model-agnostic admissibility engine."},
+                {"role": "system", "content": system_prompt or "You are NORTH."},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.7
         }
         
         try:
-            response = requests.post(url, headers=headers, json=data, timeout=30)
+            # If the URL provided doesn't end in completions, append it
+            request_url = self.url
+            if not request_url.endswith("/chat/completions"):
+                request_url = request_url.rstrip("/") + "/chat/completions"
+
+            response = requests.post(request_url, headers=headers, json=data, timeout=30)
             response.raise_for_status()
             return response.json()["choices"][0]["message"]["content"]
         except Exception as e:
-            return f"Mistral API Error: {str(e)}"
+            return f"Mistral API Error ({self.model_name}): {str(e)}"
 
 class OpenAIAdapter(BaseAdapter):
-    """
-    Adding this as a fallback in case your gate.py tries to use it.
-    """
-    def __init__(self, model_name: str, api_key: str = None):
+    def __init__(self, model_name: str, api_key: str = None, **kwargs):
         self.model_name = model_name
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.url = kwargs.get("base_url") or kwargs.get("api_base") or "https://api.openai.com/v1/chat/completions"
 
     def complete(self, prompt: str, system_prompt: str = None) -> str:
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         data = {
             "model": self.model_name,
             "messages": [
@@ -67,6 +61,9 @@ class OpenAIAdapter(BaseAdapter):
                 {"role": "user", "content": prompt}
             ]
         }
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        try:
+            response = requests.post(self.url, headers=headers, json=data)
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            return f"OpenAI API Error: {str(e)}"
