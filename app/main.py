@@ -1,23 +1,19 @@
+import os
+import httpx
+import logging
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import logging
 
-from app.gate import evaluate
-from app.ratelimit import check_rate_limit
-
-# Setup basic logging to help you see errors in Render logs
+# Setup logging to see the exact Mistral response in Render logs
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="NORTH Conscience API", version="0.5.0-pressure-web")
+app = FastAPI(title="NORTH Conscience API", version="0.6.0-direct-sync")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://o3possibility.github.io",
-        "http://o3possibility.github.io"
-    ],
+    allow_origins=["https://o3possibility.github.io", "http://o3possibility.github.io"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,38 +21,55 @@ app.add_middleware(
 
 class EvaluateRequest(BaseModel):
     prompt: str
-    model: str = "default"
-    n_reads: int | None = 1
+    model: str = "open-mistral-7b" # Mistral's standard stable model
 
 @app.get("/health")
 def health():
     return {"ok": True, "service": "north"}
 
-def _get_client_ip(request: Request) -> str:
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
 @app.post("/evaluate")
-async def eval_endpoint(req: EvaluateRequest, request: Request):
-    client_ip = _get_client_ip(request)
+async def eval_endpoint(req: EvaluateRequest):
+    # 1. Meticulous Key Retrieval
+    api_key = os.getenv("MISTRAL_API_KEY", "").strip()
     
-    # 1. Bypass rate limit if it's causing the 500
-    try:
-        check_rate_limit(client_ip, byok=False)
-    except Exception as e:
-        logger.error(f"Rate Limit System Error: {e}")
-        # We continue so the app doesn't die just because Redis is missing
+    if not api_key:
+        logger.error("MISTRAL_API_KEY is missing from Render Environment Variables.")
+        return {"raw_text": "Backend Error: API Key not configured."}
 
-    # 2. Guarded Evaluation
-    try:
-        result = evaluate(
-            req.prompt,
-            req.model,
-            n_reads=req.n_reads or 1,
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Evaluation Logic Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # 2. Direct Call to Mistral (Bypassing internal app.gate to fix 401)
+    async with httpx.AsyncClient() as client:
+        try:
+            logger.info(f"Sending request to Mistral for prompt: {req.prompt[:20]}...")
+            
+            response = await client.post(
+                "https://api.mistral.ai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": req.model,
+                    "messages": [{"role": "user", "content": req.prompt}],
+                    "temperature": 0.7
+                },
+                timeout=30.0
+            )
+
+            # 3. Meticulous Error Handling
+            if response.status_code == 401:
+                logger.error("Mistral 401: Key is invalid or billing hasn't synced.")
+                return {"raw_text": "Model Error: 401 Unauthorized. Verify your Mistral Key in Render."}
+            
+            if response.status_code != 200:
+                logger.error(f"Mistral Error {response.status_code}: {response.text}")
+                return {"raw_text": f"Engine Error {response.status_code}: {response.text}"}
+
+            data = response.json()
+            return {
+                "fused_meaning_object": data['choices'][0]['message']['content'],
+                "status": "success"
+            }
+
+        except Exception as e:
+            logger.error(f"System Error: {str(e)}")
+            return {"raw_text": f"Connectivity Error: {str(e)}"}
