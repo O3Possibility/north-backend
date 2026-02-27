@@ -10,7 +10,7 @@ app = FastAPI(title="NORTH Conscience API", version="0.5.0-pressure-web")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # tighten in production to your GitHub Pages domain
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
