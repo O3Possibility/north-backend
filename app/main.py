@@ -28,35 +28,33 @@ def health():
     return {"ok": True, "service": "north"}
 
 @app.post("/evaluate")
-async def eval_endpoint(req: EvaluateRequest):
-    api_key = os.getenv("MISTRAL_API_KEY", "").strip()
-    
-    # SYSTEM_PROMPT defines the Framework (I/R/Sem)
-    SYSTEM_PROMPT = (
-        "You are the NORTH Admissibility Engine. Evaluate all input through a "
-        "triadic constraint lens: 1. Intent (I), 2. Reality (R), and 3. Semantics (Sem). "
-        "Perform a torsion check to identify drift. "
-        "Output your response as a Fused Meaning Object (FMO)."
+async def evaluate(request: EvaluationRequest):
+    # Enforce the 5 Frameworks and Triadic Mapping in the System Prompt
+    SYSTEM_INSTRUCTIONS = (
+        "Output your analysis in this EXACT format:\n\n"
+        "### 1. AUDITABLE FRAMEWORKS\n"
+        "- Governance, Science, Philosophy, Engineering, Culture\n\n"
+        "### 2. TRIADIC MAPPING (I/R/Sem)\n"
+        "- **Intent (I)**: [Analysis]\n"
+        "- **Reality (R)**: [Analysis]\n"
+        "- **Semantics (Sem)**: [Analysis]\n\n"
+        "### 3. TORSION SCORE\n"
+        "SCORE: [0-100]% | [Brief justification for drift]\n\n"
+        "### 4. FUSED MEANING OBJECT (FMO)\n"
+        "[Final Admissibility Statement]"
     )
 
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                "https://api.mistral.ai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={
-                    "model": "open-mistral-7b",
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT}, # The Framework
-                        {"role": "user", "content": req.prompt}
-                    ],
-                    "temperature": 0.2 # Lower temperature for analytical precision
-                }
-            )
-            
-            data = response.json()
-            # Return the content to the 'fmo' div in your HTML
-            return {"fused_meaning_object": data['choices'][0]['message']['content']}
-            
-        except Exception as e:
-            return {"raw_text": f"Engine Error: {str(e)}"}
+        response = await client.post(
+            "https://api.mistral.ai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {os.getenv('MISTRAL_API_KEY')}"},
+            json={
+                "model": "open-mistral-7b",
+                "messages": [
+                    {"role": "system", "content": SYSTEM_INSTRUCTIONS},
+                    {"role": "user", "content": request.prompt}
+                ],
+                "temperature": 0.1 # Low temp for high precision
+            }
+        )
+        # ... existing return logic ...
