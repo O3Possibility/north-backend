@@ -1,15 +1,12 @@
-ffrom fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import os
-
-# Core Logic Imports
 from app.gate import evaluate
 from app.ratelimit import check_rate_limit
 
-app = FastAPI(title="NORTH Conscience API", version="0.5.0-pressure-web")
+app = FastAPI(title="NORTH Conscience API")
 
-# Hardened CORS to prevent preflight rejection
+# Hardened CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,18 +28,18 @@ class EvaluateRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "north", "version": "0.5.0-pressure-web"}
+    return {"status": "online"}
 
+# Using both paths to prevent the 405 redirect error
 @app.post("/evaluate")
+@app.post("/evaluate/")
 async def eval_endpoint(req: EvaluateRequest, request: Request):
-    # Extract IP for rate limiting
     xff = request.headers.get("x-forwarded-for")
     client_ip = xff.split(",")[0].strip() if xff else request.client.host
     
     check_rate_limit(client_ip, byok=bool(req.api_key))
 
     try:
-        # Re-route to your 500-framework internal gate
         return evaluate(
             prompt=req.prompt,
             model_choice=req.model,
@@ -55,5 +52,4 @@ async def eval_endpoint(req: EvaluateRequest, request: Request):
             n_reads=req.n_reads or 1,
         )
     except Exception as e:
-        # Ensure the error is stringified so JS can display it
         raise HTTPException(status_code=500, detail=str(e))
