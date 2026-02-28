@@ -16,14 +16,13 @@ app.add_middleware(
 class EvaluateRequest(BaseModel):
     prompt: str
     model: str = "mistral"
-    provider: str | None = None
-    model_name: str | None = None
     api_key: str | None = None
+    model_name: str | None = None
     session_id: str | None = None
     parent_branch_id: str | None = None
     n_reads: int = 1
 
-# Dual-route to stop the 405 Method Not Allowed error
+# Dual-routing to kill the 405 Method Not Allowed
 @app.post("/evaluate/")
 @app.post("/evaluate")
 async def eval_endpoint(req: EvaluateRequest, request: Request):
@@ -33,11 +32,9 @@ async def eval_endpoint(req: EvaluateRequest, request: Request):
     check_rate_limit(client_ip, byok=bool(req.api_key))
 
     try:
-        # Passes the Triadic payload directly to your framework chord engine
         return evaluate(
             prompt=req.prompt,
             model_choice=req.model,
-            provider=req.provider,
             api_key=req.api_key,
             model_name=req.model_name,
             session_id=req.session_id,
