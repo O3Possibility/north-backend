@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from app.gate import evaluate
 from app.ratelimit import check_rate_limit
 
-app = FastAPI(title="NORTH Conscience API")
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,7 +23,7 @@ class EvaluateRequest(BaseModel):
     parent_branch_id: str | None = None
     n_reads: int = 1
 
-# Dual routing to ensure the trailing slash from JS works
+# Dual-route to stop the 405 Method Not Allowed error
 @app.post("/evaluate/")
 @app.post("/evaluate")
 async def eval_endpoint(req: EvaluateRequest, request: Request):
@@ -33,7 +33,7 @@ async def eval_endpoint(req: EvaluateRequest, request: Request):
     check_rate_limit(client_ip, byok=bool(req.api_key))
 
     try:
-        # Executes your full 5-framework chord engine
+        # Passes the Triadic payload directly to your framework chord engine
         return evaluate(
             prompt=req.prompt,
             model_choice=req.model,
