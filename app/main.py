@@ -18,11 +18,13 @@ class EvaluateRequest(BaseModel):
     model: str = "mistral"
     provider: str | None = None
     model_name: str | None = None
+    api_base: str | None = None  # Preserving your long-form JS field
     api_key: str | None = None
     session_id: str | None = None
     parent_branch_id: str | None = None
     n_reads: int = 1
 
+# Dual routes to handle trailing slash redirects from Render/FastAPI
 @app.post("/evaluate/")
 @app.post("/evaluate")
 async def eval_endpoint(req: EvaluateRequest, request: Request):
@@ -32,13 +34,14 @@ async def eval_endpoint(req: EvaluateRequest, request: Request):
     check_rate_limit(client_ip, byok=bool(req.api_key))
 
     try:
-        # Passes the full payload to the framework gate in gate.py
+        # Calls the actual framework logic in gate.py
         return evaluate(
             prompt=req.prompt,
             model_choice=req.model,
             provider=req.provider,
             api_key=req.api_key,
             model_name=req.model_name,
+            api_base=req.api_base,
             session_id=req.session_id,
             parent_branch_id=req.parent_branch_id,
             n_reads=req.n_reads
