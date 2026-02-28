@@ -12,37 +12,48 @@ from app.logging_utils import log_event
 
 MAX_PASSES = 2
 
+# --- UPDATED: STRICT HIERARCHICAL TEMPLATE ---
 SYSTEM_TEMPLATE = """
 You are the NORTH Admissibility Gate.
 
 ### CHORD (ACTIVE LENSES)
 TONIC: {tonic}
-BALLAST: {ballasts}
+BALLASTS:
+{ballasts}
 
 ### PROTOCOL
-1. INTENT: Summarize user goal.
-2. AUDIT: Use the TONIC and BALLAST lenses to score I, R, and Sem.
-3. OUTPUT: Legible, grounded response.
+1. INTENT: Summarize user goal using bold headers.
+2. AUDIT: Use the TONIC and BALLAST lenses to score I, R, and Sem. 
+3. OUTPUT: Strictly follow the hierarchical Markdown format below.
 
 ### OUTPUT FORMAT (STRICT)
 [INTENT]
-...
+**User Goal:** [Brief summary]
+**Primary Tension:** [Identify the structural conflict]
+
 [I] 0.00
 [R] 0.00
 [Sem] 0.00
 [L]
-...
+
 [STATUS] ADMISSIBLE | REFUSAL
 
 [FUSED MEANING OBJECT]
-**Lenses Applied:** - Tonic: [Insert Name from TONIC above]
-- Ballasts: [Insert Names from BALLAST above]
+### Core Conflict
+[Describe the friction between short-term actions and long-term systemic integrity.]
 
-**Response:**
-[Provide the response here. Use clear headers. Do not use complex system jargon.]
+### Framework Alignment
+* **Tonic ({tonic_name}):** [How the Tonic views the act]
+* **Ballasts:** * [Name 1]: [Contribution to logic]
+  * [Name 2]: [Contribution to logic]
+
+### Actionable Guidance
+**[Final Status Justification]**
+[Provide the final response here. Use bold text for emphasis on critical path changes.]
 
 [REPAIR/FEEDBACK]
-Explain I/R/Sem scores in brief prose. Identify specifically which frameworks from the Chord influenced the scores.
+**Diagnostic Summary:** [Explain I/R/Sem scores]
+**Framework Contribution:** [Identify specific frameworks from the Chord]
 """
 
 REPAIR_TEMPLATE = """
@@ -64,17 +75,32 @@ The previous draft FAILED admissibility.
 TONIC:
 {tonic}
 
-BALLAST:
+BALLASTS:
 {ballasts}
 
 ### PREVIOUS DRAFT
 {draft}
 
 ### OUTPUT FORMAT (STRICT)
-[INTENT]\n...
-[I] 0.00\n[R] 0.00\n[Sem] 0.00\n[L]\n...
-[STATUS] ADMISSIBLE | REFUSAL\n[FUSED MEANING OBJECT]\n...
-[REPAIR/FEEDBACK]\n...
+[INTENT]
+**User Goal:** ...
+[I] 0.00
+[R] 0.00
+[Sem] 0.00
+[L]
+[STATUS] ADMISSIBLE | REFUSAL
+
+[FUSED MEANING OBJECT]
+### Core Conflict
+...
+### Framework Alignment
+* **Tonic ({tonic_name}):** ...
+* **Ballasts:** ...
+### Actionable Guidance
+...
+
+[REPAIR/FEEDBACK]
+...
 """
 
 def estimate_torsion_inputs(prompt: str) -> TorsionInputs:
@@ -119,7 +145,6 @@ def _evaluate_single_read(
 
     # --- CHORD RESOLUTION LOGIC ---
     try:
-        # Attempt 1: ChromaDB
         engine = ConscienceChordEngine()
         chord_res = engine.get_chord(prompt, ballast_pool_k=_pool_k)
         if chord_res:
@@ -129,39 +154,50 @@ def _evaluate_single_read(
         else:
             raise ValueError("ChromaDB empty")
     except Exception:
-        # Attempt 2: CSV Fallback (Most likely path on Render)
+        # Fallback to CSV
         try:
             df = pd.read_csv("MASTER_CANONICAL.csv")
-            # Simple keyword matching for relevance
             sample_size = min(len(df), 5)
-            # Pick a random subset to act as the Chord
             selected = df.sample(n=sample_size)
+            
+            # Clean ID extraction to prevent 'nan' strings breaking the UI
+            tonic_id = str(selected.iloc[0].get("ID_MASTER", "T-01"))
+            if tonic_id.lower() == "nan": tonic_id = "T-01"
+            tonic_name = str(selected.iloc[0].get("Framework_Name", "Unknown Framework"))
             
             chord = {
                 "tonic": {
-                    "id": str(selected.iloc[0].get("ID_MASTER", "T-01")),
-                    "doc": f"Framework: {selected.iloc[0].get('Framework_Name')}. Core Triad: {selected.iloc[0].get('Core_Triad')}. Blurb: {selected.iloc[0].get('Blurb')}",
-                    "meta": {"name": str(selected.iloc[0].get("Framework_Name"))}
+                    "id": tonic_id,
+                    "doc": f"Framework: {tonic_name}. Core Triad: {selected.iloc[0].get('Core_Triad')}. Blurb: {selected.iloc[0].get('Blurb')}",
+                    "meta": {"name": tonic_name}
                 },
-                "ballasts": [
-                    {
-                        "id": str(row.get("ID_MASTER", f"B-{i}")),
-                        "doc": f"Framework: {row.get('Framework_Name')}. Core Triad: {row.get('Core_Triad')}. Blurb: {row.get('Blurb')}",
-                        "meta": {"name": str(row.get("Framework_Name"))}
-                    } for i, row in selected.iloc[1:].iterrows()
-                ]
+                "ballasts": []
             }
+            
+            for i, row in selected.iloc[1:].iterrows():
+                b_id = str(row.get("ID_MASTER", f"B-{i}"))
+                if b_id.lower() == "nan": b_id = f"B-{i}"
+                b_name = str(row.get("Framework_Name", "Unknown Framework"))
+                
+                chord["ballasts"].append({
+                    "id": b_id,
+                    "doc": f"Framework: {b_name}. Core Triad: {row.get('Core_Triad')}. Blurb: {row.get('Blurb')}",
+                    "meta": {"name": b_name}
+                })
+                
             tonic_doc = chord["tonic"]["doc"]
             ballast_docs = [b["doc"] for b in chord["ballasts"]]
         except Exception as e2:
             print(f"FAILED ALL CHORD ATTEMPTS: {e2}")
-            # Final Safety hardcode
             chord = {
                 "tonic": {"id": "SYS-T01", "doc": "Triadic Systems Theory: Logic of three-axis constraints.", "meta": {"name": "Triadic Systems"}},
                 "ballasts": [{"id": "SYS-B01", "doc": "Indicator Stability: Semantic drift measurement.", "meta": {"name": "Semantic Stability"}}]
             }
             tonic_doc = chord["tonic"]["doc"]
             ballast_docs = [b["doc"] for b in chord["ballasts"]]
+
+    # Extract clean tonic name for the template formatting
+    current_tonic_name = chord["tonic"]["meta"].get("name", "Unknown Framework")
 
     sys = SYSTEM_TEMPLATE.format(
         tonic=tonic_doc,
@@ -170,6 +206,7 @@ def _evaluate_single_read(
         tau=tau,
         rho=rho,
         rho_crit=settings.RHO_CRIT,
+        tonic_name=current_tonic_name
     )
 
     adapter, provider_used = get_adapter(model_choice, provider_override=provider, api_key=api_key, model_name=model_name, api_base=api_base)
@@ -203,6 +240,7 @@ def _evaluate_single_read(
                 tonic=tonic_doc,
                 ballasts="\n\n---\n\n".join(ballast_docs),
                 draft=raw1[:1800],
+                tonic_name=current_tonic_name
             )
             raw2 = adapter.generate(system=repair_sys, prompt=prompt)
             I, R, Sem, L, status2, missing = parse_all(raw2)
@@ -215,9 +253,22 @@ def _evaluate_single_read(
             event = "STABLE_ADMISSIBLE" if status_final == "ADMISSIBLE" else "STABLE_REFUSAL"
 
     fmo = _extract_fmo(raw_final)
+    
+    # --- UPDATED: EXPLICIT LINEAGE PAYLOAD ---
+    # We pass 'name' directly at the top level of the object so the frontend catches it easily.
     chord_payload = {
-        "tonic": {"id": chord["tonic"]["id"], "meta": chord["tonic"]["meta"]},
-        "ballasts": [{"id": b["id"], "meta": b["meta"]} for b in chord["ballasts"]],
+        "tonic": {
+            "id": str(chord["tonic"]["id"]), 
+            "name": str(chord["tonic"]["meta"].get("name", "Unknown")),
+            "meta": chord["tonic"]["meta"]
+        },
+        "ballasts": [
+            {
+                "id": str(b["id"]), 
+                "name": str(b["meta"].get("name", "Unknown")),
+                "meta": b["meta"]
+            } for b in chord["ballasts"]
+        ],
     }
 
     return {
